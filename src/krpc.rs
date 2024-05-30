@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use bendy::{decoding::FromBencode, encoding::ToBencode};
 use rand::RngCore;
 use std::collections::HashMap;
@@ -39,12 +39,16 @@ impl TxId {
         Ok(Self(bytes))
     }
 
-    pub fn from_str(src: &str) -> anyhow::Result<Self> {
-        Ok(Self(src.as_bytes().to_vec()))
-    }
-
     pub fn as_slice(&self) -> &[u8] {
         self.0.as_slice()
+    }
+}
+
+impl FromStr for TxId {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.as_bytes().to_vec()))
     }
 }
 
@@ -66,10 +70,6 @@ impl NodeId {
         Ok(Self(bytes))
     }
 
-    pub fn from_str(src: &str) -> anyhow::Result<Self> {
-        Ok(Self(src.as_bytes().to_vec()))
-    }
-
     pub fn as_slice(&self) -> &[u8] {
         self.0.as_slice()
     }
@@ -88,6 +88,10 @@ impl NodeId {
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn distance_to(&self, other: &NodeId) -> Distance {
         assert_eq!(self.0.len(), other.0.len());
 
@@ -97,6 +101,14 @@ impl NodeId {
             .collect();
 
         Distance(value)
+    }
+}
+
+impl FromStr for NodeId {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.as_bytes().to_vec()))
     }
 }
 
@@ -173,17 +185,21 @@ impl NodeAddr {
 
         let port = {
             use byteorder::*;
-            NetworkEndian::read_u16(&port_bytes)
+            NetworkEndian::read_u16(port_bytes)
         };
 
         Ok(Self { ip, port })
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self> {
-        let parts: Vec<&str> = value.split(":").collect();
+impl FromStr for NodeAddr {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = value.split(':').collect();
 
         if parts.len() != 2 {
-            return Err(anyhow!("invalid ip/port: {:?}", value));
+            bail!("invalid ip/port: {:?}", value);
         }
 
         let ip = Ipv4Addr::from_str(parts[0])
@@ -198,7 +214,7 @@ impl NodeAddr {
 
 impl ToString for NodeAddr {
     fn to_string(&self) -> String {
-        format!("{}:{}", self.ip.to_string(), self.port)
+        format!("{}:{}", self.ip, self.port)
     }
 }
 
@@ -223,22 +239,22 @@ impl ToBencode for FindNodeRequest {
             e.emit_pair_with(KEY_QUERY_ARGUMENTS, |e| {
                 e.emit_dict(|mut e| {
                     e.emit_pair_with(b"id", |e| {
-                        e.emit_bytes(&self.node_id_self.as_slice())
+                        e.emit_bytes(self.node_id_self.as_slice())
                     })?;
 
                     e.emit_pair_with(b"target", |e| {
-                        e.emit_bytes(&self.node_id_target.as_slice())
+                        e.emit_bytes(self.node_id_target.as_slice())
                     })
                 })
             })?;
 
-            e.emit_pair(KEY_QUERY_METHOD_NAME, &"find_node")?;
+            e.emit_pair(KEY_QUERY_METHOD_NAME, "find_node")?;
 
             e.emit_pair_with(KEY_TRANSACTION_ID, |e| {
                 e.emit_bytes(self.tx_id.as_slice())
             })?;
 
-            e.emit_pair(KEY_MESSAGE_TYPE, &"q")?;
+            e.emit_pair(KEY_MESSAGE_TYPE, "q")?;
 
             Ok(())
         })
@@ -494,11 +510,11 @@ impl KrpcReceiver {
         loop {
             let (len, addr) = self.sock.recv_from(&mut buf).await.unwrap();
             let data = &buf[0..len];
-            let data_hex = hex::encode(&data);
+            let data_hex = hex::encode(data);
 
             debug!(src = ?addr, ?len, ?data_hex, "receiver: recv");
 
-            self.handle_data(&data).await?;
+            self.handle_data(data).await?;
         }
     }
 

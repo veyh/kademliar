@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use itertools::Itertools;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{Ordering, AtomicU16};
 use tokio::net::UdpSocket;
@@ -209,7 +210,7 @@ impl App {
                             ).await?;
                         }
 
-                        if k_bucket.iter().find(|x| **x == node).is_none() {
+                        if !k_bucket.iter().any(|x| *x == node) {
                             k_bucket.push(node);
                         }
                     }
